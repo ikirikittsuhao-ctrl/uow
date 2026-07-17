@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <!-- CSP（コンテンツセキュリティポリシー）で XSS 対策 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co">
     <title>ポスト | sasuty</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -19,6 +22,7 @@
             --repost-color: #00ba7c;
             --repost-bg-hover: rgba(0, 186, 124, 0.1);
             --reply-bg-hover: rgba(29, 155, 240, 0.1);
+            --follow-color: #1d9bf0;
             --error-color: #f4212e;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,6 +81,12 @@
             align-items: center;
             gap: 12px;
             margin-bottom: 12px;
+            justify-content: space-between;
+        }
+        .post-author-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         .avatar {
             width: 48px;
@@ -94,6 +104,23 @@
         .avatar.small { width: 40px; height: 40px; font-size: 16px; }
         .main-post-name { font-weight: 700; font-size: 15px; }
         .main-post-handle { color: var(--text-sub); font-size: 15px; }
+        .btn-follow {
+            background: var(--follow-color);
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-follow:hover { background: var(--primary-blue-hover); }
+        .btn-follow.following {
+            background: transparent;
+            color: var(--follow-color);
+            border: 1px solid var(--follow-color);
+        }
         .main-post-text {
             font-size: 23px;
             line-height: 1.4;
@@ -255,12 +282,19 @@
             text-align: center;
             color: var(--text-sub);
         }
+        .error-message {
+            padding: 12px 16px;
+            background: #fee;
+            color: var(--error-color);
+            border-bottom: 1px solid #fcc;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <main>
         <div class="header-bar">
-            <button class="btn-back" onclick="window.location.href='/'">←</button>
+            <button class="btn-back" onclick="goBack()">←</button>
             <span class="page-title">ポスト</span>
         </div>
 
@@ -275,13 +309,43 @@
         let postId;
         let mainPostData = null;
         let repliesData = [];
+        let viewRegistered = false; // インプレッション重複登録防止フラグ
+        let lastRepliesCount = 0; // リアルタイム更新の制限用
+
+        // レート制限（DDoS対策）
+        const requestLimiter = {
+            limits: new Map(),
+            MAX_REQUESTS: 30,
+            WINDOW_MS: 60000, // 1分
+            
+            checkLimit(key) {
+                const now = Date.now();
+                if (!this.limits.has(key)) {
+                    this.limits.set(key, []);
+                }
+                const times = this.limits.get(key);
+                const validTimes = times.filter(t => now - t < this.WINDOW_MS);
+                
+                if (validTimes.length >= this.MAX_REQUESTS) {
+                    return false;
+                }
+                validTimes.push(now);
+                this.limits.set(key, validTimes);
+                return true;
+            }
+        };
+
+        function goBack() {
+            window.history.back();
+        }
 
         async function init() {
+            // URLパラメータの検証（XSS対策）
             const params = new URLSearchParams(window.location.search);
             postId = params.get('id');
 
-            if (!postId) {
-                document.getElementById('content-area').innerHTML = '<div class="empty-state">ポストが見つかりませんでした。</div>';
+            if (!postId || !/^[0-9a-f-]{36}$/.test(postId)) {
+                showError('無効なポストIDです');
                 return;
             }
 
@@ -289,73 +353,124 @@
 
             try {
                 const res = await fetch('/api/config');
+                if (!res.ok) throw new Error('Config fetch failed');
                 const config = await res.json();
+                
+                if (!config.supabaseUrl || !config.supabaseKey) {
+                    throw new Error('Invalid config');
+                }
+                
                 supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
 
                 await loadPostAndReplies();
-                await registerView();
+                // インプレッション登録は1回だけ実行
+                if (!viewRegistered) {
+                    await registerView();
+                    viewRegistered = true;
+                }
                 subscribeToDatabase();
             } catch (e) {
                 console.error('初期化に失敗しました:', e);
-                document.getElementById('content-area').innerHTML = '<div class="empty-state">読み込みに失敗しました。</div>';
+                showError('読み込みに失敗しました');
             }
         }
 
-        // 閲覧数を1回だけ加算（サーバーのRPC経由・多重増殖を防止）
+        function showError(message) {
+            document.getElementById('content-area').innerHTML = `<div class="error-message">${escapeHTML(message)}</div>`;
+        }
+
+        // 閲覧数を1回だけ加算（RPC経由で多重増殖を防止）
         async function registerView() {
+            if (!requestLimiter.checkLimit('view')) {
+                console.warn('View registration rate limited');
+                return;
+            }
             try {
-                await fetch(`/api/posts/${postId}/view`, { method: 'POST' });
+                await fetch(`/api/posts/${postId}/view`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ timestamp: Date.now() })
+                });
             } catch (e) {
                 console.error('インプレッション登録に失敗しました:', e);
             }
         }
 
         async function loadPostAndReplies() {
-            const { data: postsData, error } = await supabaseClient
-                .from('posts')
-                .select('*')
-                .or(`id.eq.${postId},parent_id.eq.${postId}`)
-                .order('created_at', { ascending: true });
-
-            if (error || !postsData) {
-                document.getElementById('content-area').innerHTML = '<div class="empty-state">読み込みに失敗しました。</div>';
+            if (!requestLimiter.checkLimit('load')) {
+                console.warn('Load rate limited');
                 return;
             }
 
-            const main = postsData.find(p => p.id === postId);
-            if (!main) {
-                document.getElementById('content-area').innerHTML = '<div class="empty-state">このポストは見つかりませんでした。</div>';
-                return;
+            try {
+                const { data: postsData, error } = await supabaseClient
+                    .from('posts')
+                    .select('*')
+                    .or(`id.eq.${postId},parent_id.eq.${postId}`)
+                    .order('created_at', { ascending: true });
+
+                if (error || !postsData) {
+                    showError('読み込みに失敗しました');
+                    return;
+                }
+
+                const main = postsData.find(p => p.id === postId);
+                if (!main) {
+                    showError('このポストは見つかりませんでした');
+                    return;
+                }
+
+                const replies = postsData.filter(p => p.parent_id === postId)
+                    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+                // データの更新があるかチェック（不要なレンダリングを防止）
+                if (repliesData.length === replies.length && repliesData.length > 0) {
+                    // リアルタイム更新の過度な実行を防ぐ
+                    return;
+                }
+
+                // いいね・リポスト・インプレッションを取得してマージ
+                const allIds = [main.id, ...replies.map(r => r.id)];
+                const { data: likesData } = await supabaseClient.from('likes').select('post_id, user_handle').in('post_id', allIds);
+                const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle').in('post_id', allIds);
+                const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count').in('post_id', allIds);
+
+                // フォロー情報を取得
+                let followsData = [];
+                if (currentUser) {
+                    const { data: follows } = await supabaseClient
+                        .from('follows')
+                        .select('user_handle')
+                        .eq('follower_handle', currentUser.handle)
+                        .eq('following_handle', main.handle);
+                    followsData = follows || [];
+                }
+
+                const myHandle = currentUser ? currentUser.handle : null;
+
+                function mergePost(post) {
+                    const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
+                    const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
+                    const impression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
+                    return {
+                        ...post,
+                        likes_count: postLikes.length,
+                        liked_by_me: myHandle ? postLikes.some(l => l.user_handle === myHandle) : false,
+                        reposts_count: postReposts.length,
+                        reposted_by_me: myHandle ? postReposts.some(r => r.user_handle === myHandle) : false,
+                        views: impression ? impression.views_count : 0
+                    };
+                }
+
+                mainPostData = mergePost(main);
+                mainPostData.followed_by_me = followsData.length > 0;
+                repliesData = replies.map(mergePost);
+
+                renderPage();
+            } catch (e) {
+                console.error('データ読み込みエラー:', e);
+                showError('データの読み込みに失敗しました');
             }
-
-            const replies = postsData.filter(p => p.parent_id === postId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-            // いいね・リポスト・インプレッションを取得してマージ
-            const allIds = [main.id, ...replies.map(r => r.id)];
-            const { data: likesData } = await supabaseClient.from('likes').select('post_id, user_handle').in('post_id', allIds);
-            const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle').in('post_id', allIds);
-            const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count').in('post_id', allIds);
-
-            const myHandle = currentUser ? currentUser.handle : null;
-
-            function mergePost(post) {
-                const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
-                const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
-                const impression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
-                return {
-                    ...post,
-                    likes_count: postLikes.length,
-                    liked_by_me: myHandle ? postLikes.some(l => l.user_handle === myHandle) : false,
-                    reposts_count: postReposts.length,
-                    reposted_by_me: myHandle ? postReposts.some(r => r.user_handle === myHandle) : false,
-                    views: impression ? impression.views_count : 0
-                };
-            }
-
-            mainPostData = mergePost(main);
-            repliesData = replies.map(mergePost);
-
-            renderPage();
         }
 
         function renderPage() {
@@ -366,10 +481,10 @@
                 <div class="inline-reply-form">
                     <div class="avatar small">${escapeHTML(currentUser.display_name.charAt(0))}</div>
                     <div class="inline-reply-right">
-                        <textarea id="reply-content" placeholder="返信をポスト" maxlength="${MAX_POST_LENGTH + 20}"></textarea>
+                        <textarea id="reply-content" placeholder="返信をポスト" maxlength="300"></textarea>
                         <div class="inline-reply-footer">
                             <span class="char-counter" id="char-counter">0 / ${MAX_POST_LENGTH}</span>
-                            <button class="btn-primary" id="reply-submit-btn" onclick="submitReply()">返信</button>
+                            <button class="btn-primary" id="reply-submit-btn" onclick="submitReply()" disabled>返信</button>
                         </div>
                     </div>
                 </div>
@@ -379,14 +494,25 @@
                 </div>
             `;
 
+            const followButton = currentUser && currentUser.handle !== mainPostData.handle ? `
+                <button class="btn-follow ${mainPostData.followed_by_me ? 'following' : ''}" 
+                        onclick="toggleFollow('${escapeHTML(mainPostData.handle)}')" 
+                        data-handle="${escapeHTML(mainPostData.handle)}">
+                    ${mainPostData.followed_by_me ? 'フォロー中' : 'フォロー'}
+                </button>
+            ` : '';
+
             area.innerHTML = `
-                <div class="main-post" data-id="${mainPostData.id}">
+                <div class="main-post" data-id="${escapeHTML(mainPostData.id)}">
                     <div class="main-post-header">
-                        <div class="avatar">${escapeHTML(initials)}</div>
-                        <div>
-                            <div class="main-post-name">${escapeHTML(mainPostData.display_name)}</div>
-                            <div class="main-post-handle">@${escapeHTML(mainPostData.handle)}</div>
+                        <div class="post-author-info">
+                            <div class="avatar">${escapeHTML(initials)}</div>
+                            <div>
+                                <div class="main-post-name">${escapeHTML(mainPostData.display_name)}</div>
+                                <div class="main-post-handle">@${escapeHTML(mainPostData.handle)}</div>
+                            </div>
                         </div>
+                        ${followButton}
                     </div>
                     <div class="main-post-text">${escapeHTML(mainPostData.content)}</div>
                     <div class="main-post-time">${new Date(mainPostData.created_at).toLocaleString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
@@ -400,11 +526,11 @@
                             <svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.246c4.42 0 8.005 3.58 8.005 8 0 4.42-3.585 8-8.005 8h-2.115l-5.117 5.12c-.614.61-1.647.17-1.647-.69v-4.43c-3.349-.41-5.377-3.13-5.377-6.002z"/></svg>
                             <span>${repliesData.length}</span>
                         </button>
-                        <button class="action-btn repost-btn ${mainPostData.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${mainPostData.id}')">
+                        <button class="action-btn repost-btn ${mainPostData.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${escapeHTML(mainPostData.id)}')">
                             <svg viewBox="0 0 24 24"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L4.5 6.55V17c0 1.1.898 2 2 2h4v2H6.5c-2.209 0-4-1.79-4-4V6.55L.932 8.48-.432 7.02 4.5 3.88zM17.5 20.12l-4.432-4.14 1.364-1.46 3.068 2.87V7c0-1.1-.898-2-2-2h-4V3h4.5c2.209 0 4 1.79 4 4v10.45l1.568-1.47 1.364 1.46-4.932 3.14z"/></svg>
                             <span>${mainPostData.reposts_count}</span>
                         </button>
-                        <button class="action-btn like-btn ${mainPostData.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${mainPostData.id}')">
+                        <button class="action-btn like-btn ${mainPostData.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${escapeHTML(mainPostData.id)}')">
                             <svg viewBox="0 0 24 24"><path d="M16.697 5.5c-1.222-.06-2.679.69-3.89 2.06L12 8.52l-.807-.96C9.982 6.19 8.525 5.44 7.303 5.5 5.202 5.58 3.5 7.3 3.5 9.42c0 1.15.3 2.23.85 3.18.91 1.58 4.42 5.09 7.65 8.24l.15.15.15-.15c3.23-3.15 6.74-6.66 7.65-8.24.55-.95.85-2.03.85-3.18 0-2.12-1.702-3.84-3.803-3.92z"/></svg>
                             <span>${mainPostData.likes_count}</span>
                         </button>
@@ -455,6 +581,11 @@
         }
 
         async function submitReply() {
+            if (!requestLimiter.checkLimit('submit_reply')) {
+                alert('投稿が多すぎます。少し待ってからお試しください');
+                return;
+            }
+
             const textarea = document.getElementById('reply-content');
             const content = textarea.value.trim();
             const btn = document.getElementById('reply-submit-btn');
@@ -489,6 +620,7 @@
                 await loadPostAndReplies();
             } catch (e) {
                 alert('通信エラーが発生しました');
+                console.error('Submit error:', e);
                 btn.disabled = false;
                 btn.innerText = '返信';
             }
@@ -513,11 +645,11 @@
                     </div>
                     <div class="reply-text">${escapeHTML(reply.content)}</div>
                     <div class="reply-actions" onclick="event.stopPropagation()">
-                        <button class="action-btn repost-btn ${reply.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${reply.id}')">
+                        <button class="action-btn repost-btn ${reply.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${escapeHTML(reply.id)}')">
                             <svg viewBox="0 0 24 24"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L4.5 6.55V17c0 1.1.898 2 2 2h4v2H6.5c-2.209 0-4-1.79-4-4V6.55L.932 8.48-.432 7.02 4.5 3.88zM17.5 20.12l-4.432-4.14 1.364-1.46 3.068 2.87V7c0-1.1-.898-2-2-2h-4V3h4.5c2.209 0 4 1.79 4 4v10.45l1.568-1.47 1.364 1.46-4.932 3.14z"/></svg>
                             <span>${reply.reposts_count}</span>
                         </button>
-                        <button class="action-btn like-btn ${reply.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${reply.id}')">
+                        <button class="action-btn like-btn ${reply.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${escapeHTML(reply.id)}')">
                             <svg viewBox="0 0 24 24"><path d="M16.697 5.5c-1.222-.06-2.679.69-3.89 2.06L12 8.52l-.807-.96C9.982 6.19 8.525 5.44 7.303 5.5 5.202 5.58 3.5 7.3 3.5 9.42c0 1.15.3 2.23.85 3.18.91 1.58 4.42 5.09 7.65 8.24l.15.15.15-.15c3.23-3.15 6.74-6.66 7.65-8.24.55-.95.85-2.03.85-3.18 0-2.12-1.702-3.84-3.803-3.92z"/></svg>
                             <span>${reply.likes_count}</span>
                         </button>
@@ -526,7 +658,7 @@
             `;
 
             card.addEventListener('click', () => {
-                window.location.href = `/onepost.html?id=${reply.id}`;
+                window.location.href = `/onepost.html?id=${encodeURIComponent(reply.id)}`;
             });
 
             return card;
@@ -537,16 +669,25 @@
                 window.location.href = '/login.html';
                 return;
             }
+            if (!requestLimiter.checkLimit('like')) {
+                alert('操作が多すぎます');
+                return;
+            }
+
             const myHandle = currentUser.handle;
             const target = targetPostId === mainPostData.id ? mainPostData : repliesData.find(r => r.id === targetPostId);
             if (!target) return;
 
-            if (target.liked_by_me) {
-                await supabaseClient.from('likes').delete().match({ post_id: targetPostId, user_handle: myHandle });
-            } else {
-                await supabaseClient.from('likes').insert([{ post_id: targetPostId, user_handle: myHandle }]);
+            try {
+                if (target.liked_by_me) {
+                    await supabaseClient.from('likes').delete().match({ post_id: targetPostId, user_handle: myHandle });
+                } else {
+                    await supabaseClient.from('likes').insert([{ post_id: targetPostId, user_handle: myHandle }]);
+                }
+                await loadPostAndReplies();
+            } catch (e) {
+                console.error('Like error:', e);
             }
-            await loadPostAndReplies();
         }
 
         async function toggleRepost(targetPostId) {
@@ -554,26 +695,78 @@
                 window.location.href = '/login.html';
                 return;
             }
+            if (!requestLimiter.checkLimit('repost')) {
+                alert('操作が多すぎます');
+                return;
+            }
+
             const myHandle = currentUser.handle;
             const target = targetPostId === mainPostData.id ? mainPostData : repliesData.find(r => r.id === targetPostId);
             if (!target) return;
 
-            if (target.reposted_by_me) {
-                await supabaseClient.from('reposts').delete().match({ post_id: targetPostId, user_handle: myHandle });
-            } else {
-                await supabaseClient.from('reposts').insert([{ post_id: targetPostId, user_handle: myHandle }]);
+            try {
+                if (target.reposted_by_me) {
+                    await supabaseClient.from('reposts').delete().match({ post_id: targetPostId, user_handle: myHandle });
+                } else {
+                    await supabaseClient.from('reposts').insert([{ post_id: targetPostId, user_handle: myHandle }]);
+                }
+                await loadPostAndReplies();
+            } catch (e) {
+                console.error('Repost error:', e);
             }
-            await loadPostAndReplies();
+        }
+
+        async function toggleFollow(targetHandle) {
+            if (!currentUser) {
+                window.location.href = '/login.html';
+                return;
+            }
+            if (!requestLimiter.checkLimit('follow')) {
+                alert('操作が多すぎます');
+                return;
+            }
+
+            try {
+                const myHandle = currentUser.handle;
+                if (mainPostData.followed_by_me) {
+                    await supabaseClient
+                        .from('follows')
+                        .delete()
+                        .match({ follower_handle: myHandle, following_handle: targetHandle });
+                } else {
+                    await supabaseClient
+                        .from('follows')
+                        .insert([{ follower_handle: myHandle, following_handle: targetHandle }]);
+                }
+                await loadPostAndReplies();
+            } catch (e) {
+                console.error('Follow error:', e);
+            }
         }
 
         function subscribeToDatabase() {
-            supabaseClient
-                .channel('onepost-realtime-channel')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadPostAndReplies())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => loadPostAndReplies())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'reposts' }, () => loadPostAndReplies())
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'impressions' }, () => loadPostAndReplies())
-                .subscribe();
+            try {
+                supabaseClient
+                    .channel('onepost-realtime-channel')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+                        setTimeout(() => loadPostAndReplies(), 500);
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => {
+                        setTimeout(() => loadPostAndReplies(), 300);
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'reposts' }, () => {
+                        setTimeout(() => loadPostAndReplies(), 300);
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'impressions' }, () => {
+                        // インプレッション更新は最小限に
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, () => {
+                        setTimeout(() => loadPostAndReplies(), 300);
+                    })
+                    .subscribe();
+            } catch (e) {
+                console.error('Subscribe error:', e);
+            }
         }
 
         init();
