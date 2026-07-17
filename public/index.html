@@ -22,6 +22,7 @@
             --repost-color: #00ba7c;
             --repost-bg-hover: rgba(0, 186, 124, 0.1);
             --reply-bg-hover: rgba(29, 155, 240, 0.1);
+            --error-color: #f4212e;
         }
 
         * {
@@ -138,6 +139,23 @@
         }
 
         .sidebar-profile-card:hover {
+            background: var(--bg-hover);
+        }
+
+        .sidebar-logout-btn {
+            width: 100%;
+            background: none;
+            border: 1px solid #cfd9de;
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 14px;
+            padding: 10px;
+            border-radius: 9999px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+        .sidebar-logout-btn:hover {
             background: var(--bg-hover);
         }
 
@@ -563,8 +581,21 @@
             min-height: 100px;
             font-family: inherit;
             line-height: 1.5;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
+
+        .char-counter-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+
+        .char-counter {
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+        .char-counter.warn { color: #ffab2e; }
+        .char-counter.over { color: var(--error-color); font-weight: 700; }
 
         .post-form-footer {
             display: flex;
@@ -587,6 +618,11 @@
 
         .btn-primary:hover {
             background: var(--primary-blue-hover);
+        }
+
+        .btn-primary:disabled {
+            background: #8ecdf8;
+            cursor: not-allowed;
         }
 
         /* ================= フローティングボタン ================= */
@@ -766,6 +802,12 @@
             color: var(--text-main);
             margin-top: 4px;
         }
+
+        .empty-state {
+            padding: 60px 16px;
+            text-align: center;
+            color: var(--text-sub);
+        }
     </style>
 </head>
 <body>
@@ -794,12 +836,15 @@
                 </ul>
             </div>
 
-            <div class="sidebar-profile-card" onclick="switchTab('profile-view', 'menu-profile')">
-                <div class="avatar" id="sidebar-avatar">ゲ</div>
-                <div style="min-width: 0;">
-                    <div class="author-name" id="sidebar-display-name" style="font-size: 14px;">ゲストユーザー</div>
-                    <div class="author-handle" id="sidebar-handle" style="font-size: 13px;">@guest</div>
+            <div>
+                <div class="sidebar-profile-card" onclick="switchTab('profile-view', 'menu-profile')">
+                    <div class="avatar" id="sidebar-avatar">?</div>
+                    <div style="min-width: 0;">
+                        <div class="author-name" id="sidebar-display-name" style="font-size: 14px;">読み込み中...</div>
+                        <div class="author-handle" id="sidebar-handle" style="font-size: 13px;">@...</div>
+                    </div>
                 </div>
+                <button class="sidebar-logout-btn" onclick="logout()">ログアウト</button>
             </div>
         </aside>
 
@@ -820,15 +865,15 @@
                 <div class="profile-container">
                     <div class="profile-header-banner" id="profile-banner">
                         <div class="profile-avatar-wrapper">
-                            <div class="avatar" id="profile-card-avatar">ゲ</div>
+                            <div class="avatar" id="profile-card-avatar">?</div>
                         </div>
                     </div>
                     <div class="profile-actions-bar">
                         <button class="btn-outline" onclick="openProfileEditModal()">プロフィールを編集</button>
                     </div>
                     <div class="profile-info">
-                        <div class="profile-display-name" id="profile-card-name">ゲストユーザー</div>
-                        <div class="profile-handle" id="profile-card-handle">@guest</div>
+                        <div class="profile-display-name" id="profile-card-name">読み込み中...</div>
+                        <div class="profile-handle" id="profile-card-handle">@...</div>
                         <div class="profile-bio-text" id="profile-card-bio">自己紹介が登録されていません。</div>
                         
                         <div class="profile-details-grid">
@@ -878,12 +923,15 @@
         </div>
 
         <div class="post-form">
-            <div class="avatar" id="modal-current-avatar">ゲ</div>
+            <div class="avatar" id="modal-current-avatar">?</div>
             <div class="post-form-right">
-                <textarea id="post-content" placeholder="いまどうしてる？"></textarea>
+                <textarea id="post-content" placeholder="いまどうしてる？" maxlength="300"></textarea>
                 <input type="hidden" id="post-parent-id" value="">
+                <div class="char-counter-row">
+                    <span class="char-counter" id="modal-char-counter">0 / 280</span>
+                </div>
                 <div class="post-form-footer">
-                    <button class="btn-primary" onclick="createPost()">投稿する</button>
+                    <button class="btn-primary" id="post-submit-btn" onclick="createPost()">投稿する</button>
                 </div>
             </div>
         </div>
@@ -899,31 +947,27 @@
         <div class="profile-edit-form">
             <div class="input-field">
                 <label>名前</label>
-                <input type="text" id="edit-display-name" placeholder="表示名">
-            </div>
-            <div class="input-field">
-                <label>ユーザー名</label>
-                <input type="text" id="edit-handle" placeholder="@なしで入力">
+                <input type="text" id="edit-display-name" placeholder="表示名" maxlength="30">
             </div>
             <div class="input-field">
                 <label>自己紹介</label>
-                <textarea id="edit-bio" rows="3" placeholder="自己紹介文"></textarea>
+                <textarea id="edit-bio" rows="3" placeholder="自己紹介文" maxlength="160"></textarea>
             </div>
             <div class="input-field">
                 <label>場所</label>
-                <input type="text" id="edit-location" placeholder="東京、日本 など">
+                <input type="text" id="edit-location" placeholder="東京、日本 など" maxlength="30">
             </div>
             <div class="input-field">
                 <label>ウェブサイト</label>
-                <input type="text" id="edit-website" placeholder="https://example.com">
+                <input type="text" id="edit-website" placeholder="https://example.com" maxlength="100">
             </div>
             <div class="input-field">
                 <label>誕生日</label>
-                <input type="text" id="edit-birth" placeholder="2000年1月1日 など">
+                <input type="text" id="edit-birth" placeholder="2000年1月1日 など" maxlength="30">
             </div>
             <div class="input-field">
                 <label>テーマカラー (16進数または色名)</label>
-                <input type="text" id="edit-banner-color" placeholder="#1d9bf0">
+                <input type="text" id="edit-banner-color" placeholder="#1d9bf0" maxlength="30">
             </div>
             <div class="post-form-footer" style="border-top:none; padding-top:0;">
                 <button class="btn-primary" onclick="saveDetailedProfile()">保存</button>
@@ -931,14 +975,18 @@
         </div>
     </div>
 
+    <script src="/common.js"></script>
     <script>
         let supabaseClient;
         let globalPostsCache = [];
 
         // 1. 初期化処理
         async function init() {
-            loadSavedProfile();
-            
+            const loggedIn = await requireLoginOrRedirect();
+            if (!loggedIn) return; // ログインページへリダイレクト済み
+
+            bindProfileToDOM(currentUser);
+
             try {
                 const res = await fetch('/api/config');
                 const config = await res.json();
@@ -952,19 +1000,20 @@
             } catch (e) {
                 console.error("Supabase初期化に失敗しました。認証情報または接続を確認してください。", e);
             }
+
+            document.getElementById('post-content').addEventListener('input', updateModalCharCounter);
         }
 
-        // 2. ローカルからプロフィールデータを読み込む
-        function loadSavedProfile() {
-            const displayName = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
-            const handle = localStorage.getItem('sasuty_handle') || 'guest';
-            const bio = localStorage.getItem('sasuty_bio') || 'こんにちは！sasutyへようこそ。';
-            const location = localStorage.getItem('sasuty_location') || '東京';
-            const website = localStorage.getItem('sasuty_website') || 'https://sasuty.example.com';
-            const birth = localStorage.getItem('sasuty_birth') || '2000年1月1日';
-            const bannerColor = localStorage.getItem('sasuty_banner_color') || '#1d9bf0';
+        // 2. サーバーから取得したプロフィールをDOMに反映
+        function bindProfileToDOM(user) {
+            const displayName = user.display_name || 'ユーザー';
+            const handle = user.handle || 'guest';
+            const bio = user.bio || 'こんにちは！sasutyへようこそ。';
+            const location = user.location || '未設定';
+            const website = user.website || '';
+            const birth = user.birth || '未設定';
+            const bannerColor = user.banner_color || '#1d9bf0';
 
-            // DOMにバインド
             document.getElementById('sidebar-display-name').innerText = displayName;
             document.getElementById('sidebar-handle').innerText = '@' + handle;
             document.getElementById('profile-card-name').innerText = displayName;
@@ -972,8 +1021,8 @@
             document.getElementById('profile-card-bio').innerText = bio;
             
             document.getElementById('profile-card-location').innerText = location;
-            document.getElementById('profile-card-website').innerText = website;
-            document.getElementById('profile-card-website').href = website.startsWith('http') ? website : 'https://' + website;
+            document.getElementById('profile-card-website').innerText = website || '未設定';
+            document.getElementById('profile-card-website').href = website ? (website.startsWith('http') ? website : 'https://' + website) : '#';
             document.getElementById('profile-card-birth').innerText = birth;
             document.getElementById('profile-banner').style.backgroundColor = bannerColor;
 
@@ -1012,6 +1061,7 @@
                 document.getElementById('post-content').value = '';
                 document.getElementById('post-parent-id').value = '';
                 document.getElementById('reply-preview-container').style.display = 'none';
+                updateModalCharCounter();
             }
         }
 
@@ -1036,6 +1086,23 @@
             togglePostSheet(true);
         }
 
+        // 4.5 文字数カウンター（投稿モーダル）
+        function updateModalCharCounter() {
+            const textarea = document.getElementById('post-content');
+            const counter = document.getElementById('modal-char-counter');
+            const btn = document.getElementById('post-submit-btn');
+            const len = textarea.value.length;
+
+            counter.innerText = `${len} / ${MAX_POST_LENGTH}`;
+            counter.classList.remove('warn', 'over');
+            if (len > MAX_POST_LENGTH) {
+                counter.classList.add('over');
+            } else if (len > MAX_POST_LENGTH * 0.9) {
+                counter.classList.add('warn');
+            }
+            btn.disabled = (len === 0 || len > MAX_POST_LENGTH);
+        }
+
         // 5. プロフィール編集モーダルの開閉
         function toggleProfileEditModal(isOpen) {
             const sheet = document.getElementById('profile-edit-sheet');
@@ -1044,13 +1111,12 @@
                 sheet.classList.add('open');
                 overlay.classList.add('open');
                 
-                document.getElementById('edit-display-name').value = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
-                document.getElementById('edit-handle').value = localStorage.getItem('sasuty_handle') || 'guest';
-                document.getElementById('edit-bio').value = localStorage.getItem('sasuty_bio') || '';
-                document.getElementById('edit-location').value = localStorage.getItem('sasuty_location') || '';
-                document.getElementById('edit-website').value = localStorage.getItem('sasuty_website') || '';
-                document.getElementById('edit-birth').value = localStorage.getItem('sasuty_birth') || '';
-                document.getElementById('edit-banner-color').value = localStorage.getItem('sasuty_banner_color') || '#1d9bf0';
+                document.getElementById('edit-display-name').value = currentUser.display_name || '';
+                document.getElementById('edit-bio').value = currentUser.bio || '';
+                document.getElementById('edit-location').value = currentUser.location || '';
+                document.getElementById('edit-website').value = currentUser.website || '';
+                document.getElementById('edit-birth').value = currentUser.birth || '';
+                document.getElementById('edit-banner-color').value = currentUser.banner_color || '#1d9bf0';
             } else {
                 sheet.classList.remove('open');
                 overlay.classList.remove('open');
@@ -1061,22 +1127,40 @@
             toggleProfileEditModal(true);
         }
 
-        // 6. 編集内容をローカルストレージに保存
-        function saveDetailedProfile() {
-            localStorage.setItem('sasuty_display_name', document.getElementById('edit-display-name').value.trim());
-            localStorage.setItem('sasuty_handle', document.getElementById('edit-handle').value.trim());
-            localStorage.setItem('sasuty_bio', document.getElementById('edit-bio').value.trim());
-            localStorage.setItem('sasuty_location', document.getElementById('edit-location').value.trim());
-            localStorage.setItem('sasuty_website', document.getElementById('edit-website').value.trim());
-            localStorage.setItem('sasuty_birth', document.getElementById('edit-birth').value.trim());
-            localStorage.setItem('sasuty_banner_color', document.getElementById('edit-banner-color').value.trim() || '#1d9bf0');
+        // 6. 編集内容をサーバーに保存（DB永続化）
+        async function saveDetailedProfile() {
+            const payload = {
+                display_name: document.getElementById('edit-display-name').value.trim() || currentUser.handle,
+                bio: document.getElementById('edit-bio').value.trim(),
+                location: document.getElementById('edit-location').value.trim(),
+                website: document.getElementById('edit-website').value.trim(),
+                birth: document.getElementById('edit-birth').value.trim(),
+                banner_color: document.getElementById('edit-banner-color').value.trim() || '#1d9bf0'
+            };
 
-            loadSavedProfile();
-            toggleProfileEditModal(false);
+            try {
+                const res = await fetch('/api/profile', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
 
-            // 表示更新
-            if (globalPostsCache.length > 0) {
-                renderPosts(globalPostsCache);
+                if (!res.ok) {
+                    alert(data.error || 'プロフィールの保存に失敗しました');
+                    return;
+                }
+
+                currentUser = data.user;
+                bindProfileToDOM(currentUser);
+                toggleProfileEditModal(false);
+
+                // 表示更新
+                if (globalPostsCache.length > 0) {
+                    renderPosts(globalPostsCache);
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
             }
         }
 
@@ -1114,37 +1198,26 @@
             const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle');
             const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count');
 
-            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+            const myHandle = currentUser ? currentUser.handle : null;
 
-            // 3. データマージ処理
+            // 3. データマージ処理（インプレッションはタイムライン一覧では加算しない。
+            //    加算は個別ポストページ(onepost.html)を開いた時にサーバーのRPC経由で1回だけ行う）
             globalPostsCache = postsData.map(post => {
                 const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
                 const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
                 const postImpression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
 
-                // 閲覧数の擬似増分（ページリロードや取得ごとに確実に＋1追加する。本物のインプレッション挙動）
-                trackImpression(post.id, postImpression ? postImpression.views_count : 0);
-
                 return {
                     ...post,
                     likes_count: postLikes.length,
-                    liked_by_me: postLikes.some(l => l.user_handle === myHandle),
+                    liked_by_me: myHandle ? postLikes.some(l => l.user_handle === myHandle) : false,
                     reposts_count: postReposts.length,
-                    reposted_by_me: postReposts.some(r => r.user_handle === myHandle),
-                    views: postImpression ? postImpression.views_count + 1 : 1
+                    reposted_by_me: myHandle ? postReposts.some(r => r.user_handle === myHandle) : false,
+                    views: postImpression ? postImpression.views_count : 0
                 };
             });
 
             renderPosts(globalPostsCache);
-        }
-
-        // インプレッションカウント増幅処理
-        async function trackImpression(postId, currentCount) {
-            if (!supabaseClient) return;
-            await supabaseClient.from('impressions').upsert(
-                { post_id: postId, views_count: currentCount + 1 },
-                { onConflict: 'post_id' }
-            );
         }
 
         // 9. スレッド形式タイムラインレンダラー
@@ -1154,6 +1227,11 @@
 
             const rootPosts = posts.filter(p => !p.parent_id);
             const replies = posts.filter(p => p.parent_id);
+
+            if (rootPosts.length === 0) {
+                timeline.innerHTML = '<div class="empty-state">まだ投稿がありません。最初の投稿をしてみましょう！</div>';
+                return;
+            }
 
             rootPosts.forEach(root => {
                 const groupContainer = document.createElement('div');
@@ -1166,7 +1244,7 @@
                 const hasReplies = childReplies.length > 0;
 
                 // ルート親カード生成
-                const parentCard = createPostCardDOM(root, null, hasReplies);
+                const parentCard = createPostCardDOM(root, null, hasReplies, childReplies.length);
                 groupContainer.appendChild(parentCard);
 
                 // スレッドアコーディオン構造の生成
@@ -1177,7 +1255,7 @@
 
                     childReplies.forEach((reply, idx) => {
                         const isLastReply = (idx === childReplies.length - 1);
-                        repliesWrapper.appendChild(createPostCardDOM(reply, root.handle, !isLastReply));
+                        repliesWrapper.appendChild(createPostCardDOM(reply, root.handle, !isLastReply, 0));
                     });
 
                     groupContainer.appendChild(repliesWrapper);
@@ -1223,81 +1301,109 @@
             }
         }
 
-        // 10. 投稿を作成・インサート
+        // 10. 投稿を作成・インサート（サーバーAPI経由・文字数制限あり）
         async function createPost() {
-            const displayName = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
-            const handle = localStorage.getItem('sasuty_handle') || 'guest';
             const content = document.getElementById('post-content').value.trim();
             const parentId = document.getElementById('post-parent-id').value || null;
+            const btn = document.getElementById('post-submit-btn');
 
-            if (!content || !supabaseClient) return;
+            if (!content) return;
+            if (content.length > MAX_POST_LENGTH) {
+                alert(`投稿は${MAX_POST_LENGTH}文字以内にしてください`);
+                return;
+            }
 
-            const { error } = await supabaseClient
-                .from('posts')
-                .insert([{ 
-                    display_name: displayName, 
-                    handle: handle, 
-                    content: content, 
-                    parent_id: parentId 
-                }]);
+            btn.disabled = true;
+            btn.innerText = '投稿中...';
 
-            if (error) {
-                alert('投稿に失敗しました: ' + error.message);
-            } else {
+            try {
+                const res = await fetch('/api/posts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, parent_id: parentId })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alert(data.error || '投稿に失敗しました');
+                    btn.disabled = false;
+                    btn.innerText = '投稿する';
+                    return;
+                }
+
+                btn.disabled = false;
+                btn.innerText = '投稿する';
                 togglePostSheet(false);
+                await fetchPosts();
+            } catch (e) {
+                alert('通信エラーが発生しました');
+                btn.disabled = false;
+                btn.innerText = '投稿する';
             }
         }
 
-        // 11. いいねDB書き込みトグル
+        // 11. いいねDB書き込みトグル（unique制約で二重いいねを防止・エラーハンドリングあり）
         async function toggleLike(postId) {
-            if (!supabaseClient) return;
-            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+            if (!supabaseClient || !currentUser) return;
+            const myHandle = currentUser.handle;
             
             const post = globalPostsCache.find(p => p.id === postId);
             if (!post) return;
 
+            let opError = null;
+
             if (post.liked_by_me) {
-                // いいね削除
-                await supabaseClient
+                const { error } = await supabaseClient
                     .from('likes')
                     .delete()
                     .match({ post_id: postId, user_handle: myHandle });
+                opError = error;
             } else {
-                // いいね追加
-                await supabaseClient
+                const { error } = await supabaseClient
                     .from('likes')
                     .insert([{ post_id: postId, user_handle: myHandle }]);
+                opError = error;
+            }
+
+            if (opError) {
+                console.error('いいね処理に失敗しました:', opError);
             }
             // 内部更新フェッチ
-            fetchPosts();
+            await fetchPosts();
         }
 
-        // 12. リポストDB書き込みトグル
+        // 12. リポストDB書き込みトグル（unique制約で二重リポストを防止・エラーハンドリングあり）
         async function toggleRepost(postId) {
-            if (!supabaseClient) return;
-            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+            if (!supabaseClient || !currentUser) return;
+            const myHandle = currentUser.handle;
 
             const post = globalPostsCache.find(p => p.id === postId);
             if (!post) return;
 
+            let opError = null;
+
             if (post.reposted_by_me) {
-                // リポスト削除
-                await supabaseClient
+                const { error } = await supabaseClient
                     .from('reposts')
                     .delete()
                     .match({ post_id: postId, user_handle: myHandle });
+                opError = error;
             } else {
-                // リポスト追加
-                await supabaseClient
+                const { error } = await supabaseClient
                     .from('reposts')
                     .insert([{ post_id: postId, user_handle: myHandle }]);
+                opError = error;
+            }
+
+            if (opError) {
+                console.error('リポスト処理に失敗しました:', opError);
             }
             // 内部更新フェッチ
-            fetchPosts();
+            await fetchPosts();
         }
 
-        // 13. DOM要素生成器
-        function createPostCardDOM(post, replyToHandle = null, showConnector = false) {
+        // 13. DOM要素生成器（カードクリックでonepost.htmlへ遷移）
+        function createPostCardDOM(post, replyToHandle = null, showConnector = false, replyCount = 0) {
             const postCard = document.createElement('div');
             postCard.className = 'post-card';
             if (showConnector) {
@@ -1305,7 +1411,7 @@
             }
             postCard.dataset.id = post.id;
 
-            const initials = post.display_name ? post.display_name.charAt(0) : 'ゲ';
+            const initials = post.display_name ? post.display_name.charAt(0) : '?';
             const timeDiff = getRelativeTime(post.created_at);
 
             const replyBadgeHTML = replyToHandle 
@@ -1329,7 +1435,7 @@
                         <!-- 返信 -->
                         <button class="action-btn reply-btn" onclick="openReplyModal('${post.id}', '${escapeHTML(post.display_name)}', '${escapeHTML(post.handle)}', '${escapeHTML(post.content.substring(0, 50))}')">
                             <svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.246c4.42 0 8.005 3.58 8.005 8 0 4.42-3.585 8-8.005 8h-2.115l-5.117 5.12c-.614.61-1.647.17-1.647-.69v-4.43c-3.349-.41-5.377-3.13-5.377-6.002z"/></svg>
-                            <span>${replyToHandle ? '' : '1'}</span>
+                            <span>${replyToHandle ? '' : replyCount}</span>
                         </button>
                         <!-- リポスト -->
                         <button class="action-btn repost-btn ${post.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${post.id}')">
@@ -1342,13 +1448,19 @@
                             <span class="like-count">${post.likes_count}</span>
                         </button>
                         <!-- インプレッション -->
-                        <button class="action-btn">
+                        <button class="action-btn" style="cursor:default;" onclick="event.preventDefault()">
                             <svg viewBox="0 0 24 24"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21v-4h2v4H4zM13 21v-8h2v8h-2z"/></svg>
                             <span>${post.views}</span>
                         </button>
                     </div>
                 </div>
             `;
+
+            // カード（アクションバー以外）をクリックすると個別ポストページへ遷移
+            postCard.addEventListener('click', () => {
+                window.location.href = `/onepost.html?id=${post.id}`;
+            });
+
             return postCard;
         }
 
@@ -1364,31 +1476,6 @@
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'reposts' }, () => fetchPosts())
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'impressions' }, () => fetchPosts())
                 .subscribe();
-        }
-
-        // 15. 相対時間フォーマッタ
-        function getRelativeTime(dateTimeStr) {
-            const now = new Date();
-            const past = new Date(dateTimeStr);
-            const msPerMinute = 60 * 1000;
-            const msPerHour = msPerMinute * 60;
-            const msPerDay = msPerHour * 24;
-            const elapsed = now - past;
-
-            if (elapsed < msPerMinute) {
-                return Math.max(1, Math.round(elapsed/1000)) + '秒';
-            } else if (elapsed < msPerHour) {
-                return Math.round(elapsed/msPerMinute) + '分';
-            } else if (elapsed < msPerDay) {
-                return Math.round(elapsed/msPerHour) + '時間';
-            } else {
-                return past.toLocaleDateString([], {month: '2-digit', day: '2-digit'});
-            }
-        }
-
-        function escapeHTML(str) {
-            if (!str) return '';
-            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
         }
 
         init();
