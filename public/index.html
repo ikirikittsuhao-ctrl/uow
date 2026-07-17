@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sasuty</title>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary-blue: #1d9bf0;
+            --primary-blue-hover: #1a8cd8;
+            --bg-color: #ffffff;
+            --text-main: #0f1419;
+            --text-sub: #536471;
+            --border-light: #eff3f4;
+            --bg-hover: rgba(15, 20, 25, 0.03);
+            --sidebar-width: 275px;
+            
+            --like-color: #f91880;
+            --like-bg-hover: rgba(249, 24, 128, 0.1);
+            --repost-color: #00ba7c;
+            --repost-bg-hover: rgba(0, 186, 124, 0.1);
+            --reply-bg-hover: rgba(29, 155, 240, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            display: flex;
+            width: 100%;
+            max-width: 1250px;
+            position: relative;
+        }
+
+        /* ================= サイドバー ================= */
+        aside {
+            width: var(--sidebar-width);
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-right: 1px solid var(--border-light);
+            background: var(--bg-color);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 300;
+            transform: translateX(-100%);
+        }
+
+        aside.open {
+            transform: translateX(0);
+        }
+
+        .logo-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 0 12px;
+        }
+
+        .logo {
+            font-size: 30px;
+            font-weight: 900;
+            color: var(--text-main);
+            letter-spacing: -1.5px;
+        }
+
+        .btn-close-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            font-size: 16px;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .btn-close-sidebar:hover {
+            background: var(--bg-hover);
+        }
+
+        .menu-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .menu-item {
+            padding: 14px 20px;
+            border-radius: 9999px;
+            cursor: pointer;
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-main);
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .menu-item:hover, .menu-item.active {
+            background: var(--bg-hover);
+        }
+
+        .sidebar-profile-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: auto;
+        }
+
+        .sidebar-profile-card:hover {
+            background: var(--bg-hover);
+        }
+
+        /* ================= メインコンテンツエリア ================= */
+        main {
+            flex-grow: 1;
+            width: 100%;
+            max-width: 600px;
+            min-height: 100vh;
+            border-right: 1px solid var(--border-light);
+            margin-left: 0;
+            transition: margin-left 0.3s ease;
+        }
+
+        .header-bar {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            height: 53px;
+            padding: 0 16px;
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-light);
+            z-index: 100;
+        }
+
+        .btn-toggle-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-main);
+            font-size: 20px;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .btn-toggle-sidebar:hover {
+            background: var(--bg-hover);
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+        }
+
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* ================= タイムライン / スレッド ================= */
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 120px;
+        }
+
+        .post-group {
+            display: flex;
+            flex-direction: column;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .post-group .post-card.has-connector {
+            position: relative;
+        }
+
+        .post-group .post-card.has-connector .avatar-col::after {
+            content: "";
+            position: absolute;
+            top: 48px;
+            bottom: -12px;
+            left: 20px;
+            width: 2px;
+            background-color: #cfd9de;
+            z-index: 1;
+        }
+
+        .post-card {
+            display: flex;
+            padding: 12px 16px;
+            background: var(--bg-color);
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+
+        .post-group .post-card:not(:last-child) {
+            border-bottom: none;
+        }
+
+        .post-group .post-card:last-child {
+            border-bottom: none;
+        }
+
+        .avatar-col {
+            margin-right: 12px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 40px;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1d9bf0, #8ecdf8);
+            color: white;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            user-select: none;
+            z-index: 2;
+        }
+
+        .content-col {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
+        .post-meta {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 2px;
+            font-size: 15px;
+            flex-wrap: wrap;
+        }
+
+        .author-name {
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .author-name:hover {
+            text-decoration: underline;
+        }
+
+        .author-handle, .post-dot, .post-time {
+            color: var(--text-sub);
+        }
+
+        .replying-to {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-bottom: 4px;
+        }
+
+        .replying-to span {
+            color: var(--primary-blue);
+        }
+
+        .post-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--text-main);
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            margin-bottom: 12px;
+        }
+
+        .replies-wrapper {
+            display: block;
+            transition: max-height 0.3s ease-out;
+            overflow: hidden;
+        }
+        
+        .replies-wrapper.collapsed {
+            display: none;
+        }
+
+        .thread-toggle-bar {
+            display: flex;
+            align-items: center;
+            padding: 4px 16px 12px 68px;
+            background: var(--bg-color);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .thread-toggle-button {
+            background: none;
+            border: none;
+            color: var(--primary-blue);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+
+        .thread-toggle-button:hover {
+            color: var(--primary-blue-hover);
+            text-decoration: underline;
+        }
+
+        .thread-toggle-icon {
+            display: inline-block;
+            transition: transform 0.2s ease;
+            font-size: 10px;
+        }
+
+        .thread-toggle-button.collapsed .thread-toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        /* アクションバー */
+        .post-actions {
+            display: flex;
+            justify-content: space-between;
+            max-width: 450px;
+            margin-top: 4px;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: color 0.2s;
+            padding: 8px;
+            border-radius: 9999px;
+        }
+
+        .action-btn:hover {
+            color: var(--primary-blue);
+        }
+
+        .action-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
+            padding: 6px;
+            box-sizing: content-box;
+            border-radius: 50%;
+            transition: background-color 0.2s, fill 0.2s;
+        }
+
+        .action-btn.reply-btn:hover svg {
+            background-color: var(--reply-bg-hover);
+        }
+
+        .action-btn.repost-btn:hover {
+            color: var(--repost-color);
+        }
+        .action-btn.repost-btn:hover svg {
+            background-color: var(--repost-bg-hover);
+        }
+        .action-btn.repost-btn.active {
+            color: var(--repost-color);
+        }
+
+        .action-btn.like-btn:hover {
+            color: var(--like-color);
+        }
+        .action-btn.like-btn:hover svg {
+            background-color: var(--like-bg-hover);
+        }
+        .action-btn.like-btn.liked {
+            color: var(--like-color);
+        }
+
+        /* ================= オーバーレイ ================= */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        #sidebar-overlay {
+            z-index: 290; 
+        }
+
+        .overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* ================= モーダル / ボトムシート ================= */
+        .bottom-sheet {
+            position: fixed;
+            background: var(--bg-color);
+            z-index: 250;
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+        }
+
+        /* スマートフォン環境 */
+        @media (max-width: 768px) {
+            .bottom-sheet {
+                bottom: 0;
+                left: 50%;
+                transform: translate(-50%, 100%);
+                width: 100%;
+                border-radius: 16px 16px 0 0;
+                padding: 24px 16px 16px;
+                box-shadow: 0 -8px 30px rgba(0,0,0,0.1);
+            }
+            .bottom-sheet::before {
+                content: "";
+                position: absolute;
+                top: 8px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 36px;
+                height: 4px;
+                background: #e2e8f0;
+                border-radius: 99px;
+            }
+            .bottom-sheet.open {
+                transform: translate(-50%, 0);
+            }
+        }
+
+        /* PC環境 */
+        @media (min-width: 769px) {
+            .bottom-sheet {
+                top: 10%;
+                left: 50%;
+                transform: translate(-50%, -50px);
+                width: 600px;
+                border-radius: 16px;
+                padding: 16px;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+                opacity: 0;
+                pointer-events: none;
+            }
+            .bottom-sheet.open {
+                transform: translate(-50%, 0);
+                opacity: 1;
+                pointer-events: auto;
+            }
+        }
+
+        .sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .sheet-title {
+            font-weight: 800;
+            font-size: 18px;
+        }
+
+        .btn-close-sheet {
+            background: none;
+            border: none;
+            color: var(--text-main);
+            font-size: 18px;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .btn-close-sheet:hover {
+            background: var(--bg-hover);
+        }
+
+        .reply-preview {
+            display: none;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px dashed var(--border-light);
+        }
+
+        .reply-preview-inner {
+            display: flex;
+            gap: 12px;
+        }
+
+        .reply-preview-text {
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-top: 4px;
+        }
+
+        .post-form {
+            display: flex;
+            gap: 12px;
+        }
+
+        .post-form-right {
+            flex-grow: 1;
+        }
+
+        .post-form textarea {
+            width: 100%;
+            border: none;
+            background: none;
+            font-size: 18px;
+            color: var(--text-main);
+            resize: none;
+            outline: none;
+            min-height: 100px;
+            font-family: inherit;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .post-form-footer {
+            display: flex;
+            justify-content: flex-end;
+            border-top: 1px solid var(--border-light);
+            padding-top: 12px;
+        }
+
+        .btn-primary {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 9999px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-blue-hover);
+        }
+
+        /* ================= フローティングボタン ================= */
+        .fab-trigger {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: rgba(0, 0, 0, 0.2) 0px 8px 24px;
+            cursor: pointer;
+            z-index: 90;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fab-trigger:hover {
+            background: var(--primary-blue-hover);
+            transform: scale(1.03);
+        }
+
+        .fab-trigger svg {
+            width: 24px;
+            height: 24px;
+            fill: white;
+        }
+
+        /* ================= プロフィール画面 ================= */
+        .profile-container {
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .profile-header-banner {
+            height: 150px;
+            background: #cfd9de;
+            position: relative;
+        }
+
+        .profile-avatar-wrapper {
+            position: absolute;
+            bottom: -45px;
+            left: 16px;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: rgba(0, 0, 0, 0.1) 0px 2px 8px;
+        }
+
+        .profile-avatar-wrapper .avatar {
+            width: 82px;
+            height: 82px;
+            font-size: 32px;
+        }
+
+        .profile-actions-bar {
+            display: flex;
+            justify-content: flex-end;
+            padding: 12px 16px;
+            height: 60px;
+        }
+
+        .btn-outline {
+            background: none;
+            border: 1px solid #cfd9de;
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 14px;
+            padding: 0 16px;
+            height: 36px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-outline:hover {
+            background: var(--bg-hover);
+        }
+
+        .profile-info {
+            padding: 0 16px 16px;
+        }
+
+        .profile-display-name {
+            font-size: 20px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .profile-handle {
+            color: var(--text-sub);
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .profile-bio-text {
+            font-size: 15px;
+            line-height: 1.4;
+            margin-bottom: 12px;
+            white-space: pre-wrap;
+        }
+
+        .profile-details-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            color: var(--text-sub);
+            font-size: 14px;
+        }
+
+        .profile-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .profile-detail-item svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .profile-detail-item a {
+            color: var(--primary-blue);
+            text-decoration: none;
+        }
+
+        .profile-detail-item a:hover {
+            text-decoration: underline;
+        }
+
+        /* プロフィール編集フォーム */
+        .profile-edit-form {
+            background: white;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .input-field {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #cfd9de;
+            border-radius: 4px;
+            padding: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus-within {
+            border-color: var(--primary-blue);
+        }
+
+        .input-field label {
+            font-size: 12px;
+            color: var(--text-sub);
+            font-weight: 500;
+        }
+
+        .input-field input, .input-field textarea {
+            border: none;
+            outline: none;
+            background: none;
+            font-size: 16px;
+            font-family: inherit;
+            color: var(--text-main);
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- サイドバー用オーバーレイ -->
+    <div id="sidebar-overlay" class="overlay" onclick="toggleSidebar(false)"></div>
+
+    <div class="app-container">
+        
+        <!-- ================= 左サイドバー ================= -->
+        <aside id="sidebar">
+            <div>
+                <div class="logo-area">
+                    <div class="logo">sasuty</div>
+                    <button class="btn-close-sidebar" onclick="toggleSidebar(false)">✕</button>
+                </div>
+                <ul class="menu-list">
+                    <li class="menu-item active" id="menu-timeline" onclick="switchTab('timeline-view', 'menu-timeline')">
+                        <svg style="width:24px; height:24px; fill:currentColor" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                        タイムライン
+                    </li>
+                    <li class="menu-item" id="menu-profile" onclick="switchTab('profile-view', 'menu-profile')">
+                        <svg style="width:24px; height:24px; fill:currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                        プロフィール
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-profile-card" onclick="switchTab('profile-view', 'menu-profile')">
+                <div class="avatar" id="sidebar-avatar">ゲ</div>
+                <div style="min-width: 0;">
+                    <div class="author-name" id="sidebar-display-name" style="font-size: 14px;">ゲストユーザー</div>
+                    <div class="author-handle" id="sidebar-handle" style="font-size: 13px;">@guest</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================= メイン領域 ================= -->
+        <main>
+            <div class="header-bar">
+                <button class="btn-toggle-sidebar" onclick="toggleSidebar(true)">☰</button>
+                <span id="page-title-text" class="page-title">ホーム</span>
+            </div>
+            
+            <!-- タイムラインタブ -->
+            <div id="timeline-view" class="view-section active">
+                <div id="timeline" class="timeline"></div>
+            </div>
+
+            <!-- プロフィールタブ -->
+            <div id="profile-view" class="view-section">
+                <div class="profile-container">
+                    <div class="profile-header-banner" id="profile-banner">
+                        <div class="profile-avatar-wrapper">
+                            <div class="avatar" id="profile-card-avatar">ゲ</div>
+                        </div>
+                    </div>
+                    <div class="profile-actions-bar">
+                        <button class="btn-outline" onclick="openProfileEditModal()">プロフィールを編集</button>
+                    </div>
+                    <div class="profile-info">
+                        <div class="profile-display-name" id="profile-card-name">ゲストユーザー</div>
+                        <div class="profile-handle" id="profile-card-handle">@guest</div>
+                        <div class="profile-bio-text" id="profile-card-bio">自己紹介が登録されていません。</div>
+                        
+                        <div class="profile-details-grid">
+                            <div class="profile-detail-item" id="profile-card-loc-wrap">
+                                <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                                <span id="profile-card-location">未設定</span>
+                            </div>
+                            <div class="profile-detail-item" id="profile-card-web-wrap">
+                                <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+                                <a href="#" id="profile-card-website" target="_blank">未設定</a>
+                            </div>
+                            <div class="profile-detail-item" id="profile-card-birth-wrap">
+                                <svg viewBox="0 0 24 24"><path d="M12 6c1.11 0 2-.9 2-2 0-.38-.1-.73-.29-1.03L12 1l-1.71 1.97C10.1 3.27 10 3.62 10 4c0 1.1.9 2 2 2zm6 3h-5V7h-2v2H6c-1.66 0-3 1.34-3 3v9c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-9c0-1.66-1.34-3-3-3zm1 11H5v-3h14v3zm0-5H5v-3c0-.55.45-1 1-1h12c.55 0 1 .45 1 1v3z"/></svg>
+                                <span id="profile-card-birth">未設定</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 投稿トリガーボタン -->
+    <button id="fab-post" class="fab-trigger" onclick="openNewPostModal()">
+        <svg viewBox="0 0 24 24"><path d="M23 3c-6.62 0-10.38 2.421-13.05 6.03C7.29 12.61 6 17.331 6 22h2c0-1.007.07-2.012.19-3H12c4.1 0 7.48-3.082 7.94-7.054C22.79 10.147 23.17 6.359 23 3zm-7 8h-1.5v1.5H13V11h-1.5V9.5H13V8h1.5v1.5H16V11zM1.001 22h2c0-4.004 3.246-7.25 7.25-7.25v-2c-5.105 0-9.25 4.145-9.25 9.25z"/></svg>
+    </button>
+
+    <!-- 投稿・返信モーダル -->
+    <div id="form-overlay" class="overlay" onclick="togglePostSheet(false)"></div>
+    <div id="bottom-form-sheet" class="bottom-sheet">
+        <div class="sheet-header">
+            <span class="sheet-title" id="modal-type-title">新規投稿</span>
+            <button class="btn-close-sheet" onclick="togglePostSheet(false)">✕</button>
+        </div>
+
+        <div id="reply-preview-container" class="reply-preview">
+            <div class="reply-preview-inner">
+                <div class="avatar" id="reply-preview-avatar"></div>
+                <div>
+                    <div class="post-meta">
+                        <span class="author-name" id="reply-preview-name"></span>
+                        <span class="author-handle" id="reply-preview-handle"></span>
+                    </div>
+                    <div class="reply-preview-text" id="reply-preview-text"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="post-form">
+            <div class="avatar" id="modal-current-avatar">ゲ</div>
+            <div class="post-form-right">
+                <textarea id="post-content" placeholder="いまどうしてる？"></textarea>
+                <input type="hidden" id="post-parent-id" value="">
+                <div class="post-form-footer">
+                    <button class="btn-primary" onclick="createPost()">投稿する</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- プロフィール編集モーダル -->
+    <div id="profile-edit-overlay" class="overlay" onclick="toggleProfileEditModal(false)"></div>
+    <div id="profile-edit-sheet" class="bottom-sheet">
+        <div class="sheet-header">
+            <span class="sheet-title">プロフィールを編集</span>
+            <button class="btn-close-sheet" onclick="toggleProfileEditModal(false)">✕</button>
+        </div>
+        <div class="profile-edit-form">
+            <div class="input-field">
+                <label>名前</label>
+                <input type="text" id="edit-display-name" placeholder="表示名">
+            </div>
+            <div class="input-field">
+                <label>ユーザー名</label>
+                <input type="text" id="edit-handle" placeholder="@なしで入力">
+            </div>
+            <div class="input-field">
+                <label>自己紹介</label>
+                <textarea id="edit-bio" rows="3" placeholder="自己紹介文"></textarea>
+            </div>
+            <div class="input-field">
+                <label>場所</label>
+                <input type="text" id="edit-location" placeholder="東京、日本 など">
+            </div>
+            <div class="input-field">
+                <label>ウェブサイト</label>
+                <input type="text" id="edit-website" placeholder="https://example.com">
+            </div>
+            <div class="input-field">
+                <label>誕生日</label>
+                <input type="text" id="edit-birth" placeholder="2000年1月1日 など">
+            </div>
+            <div class="input-field">
+                <label>テーマカラー (16進数または色名)</label>
+                <input type="text" id="edit-banner-color" placeholder="#1d9bf0">
+            </div>
+            <div class="post-form-footer" style="border-top:none; padding-top:0;">
+                <button class="btn-primary" onclick="saveDetailedProfile()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let supabaseClient;
+        let globalPostsCache = [];
+
+        // 1. 初期化処理
+        async function init() {
+            loadSavedProfile();
+            
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                
+                // Supabase クライアント初期化
+                supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
+
+                // 初期データ読み込み＆同期購読
+                await fetchPosts();
+                subscribeToDatabase();
+            } catch (e) {
+                console.error("Supabase初期化に失敗しました。認証情報または接続を確認してください。", e);
+            }
+        }
+
+        // 2. ローカルからプロフィールデータを読み込む
+        function loadSavedProfile() {
+            const displayName = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
+            const handle = localStorage.getItem('sasuty_handle') || 'guest';
+            const bio = localStorage.getItem('sasuty_bio') || 'こんにちは！sasutyへようこそ。';
+            const location = localStorage.getItem('sasuty_location') || '東京';
+            const website = localStorage.getItem('sasuty_website') || 'https://sasuty.example.com';
+            const birth = localStorage.getItem('sasuty_birth') || '2000年1月1日';
+            const bannerColor = localStorage.getItem('sasuty_banner_color') || '#1d9bf0';
+
+            // DOMにバインド
+            document.getElementById('sidebar-display-name').innerText = displayName;
+            document.getElementById('sidebar-handle').innerText = '@' + handle;
+            document.getElementById('profile-card-name').innerText = displayName;
+            document.getElementById('profile-card-handle').innerText = '@' + handle;
+            document.getElementById('profile-card-bio').innerText = bio;
+            
+            document.getElementById('profile-card-location').innerText = location;
+            document.getElementById('profile-card-website').innerText = website;
+            document.getElementById('profile-card-website').href = website.startsWith('http') ? website : 'https://' + website;
+            document.getElementById('profile-card-birth').innerText = birth;
+            document.getElementById('profile-banner').style.backgroundColor = bannerColor;
+
+            const firstChar = displayName.charAt(0);
+            document.getElementById('sidebar-avatar').innerText = firstChar;
+            document.getElementById('profile-card-avatar').innerText = firstChar;
+            document.getElementById('modal-current-avatar').innerText = firstChar;
+        }
+
+        // 3. サイドバーの開閉制御
+        function toggleSidebar(forceOpen) {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            const isOpen = forceOpen !== undefined ? forceOpen : !sidebar.classList.contains('open');
+
+            if (isOpen) {
+                sidebar.classList.add('open');
+                sidebarOverlay.classList.add('open');
+            } else {
+                sidebar.classList.remove('open');
+                sidebarOverlay.classList.remove('open');
+            }
+        }
+
+        // 4. 投稿シートモーダルの開閉
+        function togglePostSheet(isOpen) {
+            const sheet = document.getElementById('bottom-form-sheet');
+            const overlay = document.getElementById('form-overlay');
+            if (isOpen) {
+                sheet.classList.add('open');
+                overlay.classList.add('open');
+                setTimeout(() => document.getElementById('post-content').focus(), 150);
+            } else {
+                sheet.classList.remove('open');
+                overlay.classList.remove('open');
+                document.getElementById('post-content').value = '';
+                document.getElementById('post-parent-id').value = '';
+                document.getElementById('reply-preview-container').style.display = 'none';
+            }
+        }
+
+        function openNewPostModal() {
+            document.getElementById('modal-type-title').innerText = '新規投稿';
+            document.getElementById('post-content').placeholder = 'いまどうしてる？';
+            togglePostSheet(true);
+        }
+
+        function openReplyModal(parentPostId, parentName, parentHandle, parentContent) {
+            document.getElementById('modal-type-title').innerText = '返信を投稿';
+            document.getElementById('post-content').placeholder = '返信をポスト...';
+            document.getElementById('post-parent-id').value = parentPostId;
+
+            // 親スレッドプレビュー
+            document.getElementById('reply-preview-avatar').innerText = parentName.charAt(0);
+            document.getElementById('reply-preview-name').innerText = parentName;
+            document.getElementById('reply-preview-handle').innerText = '@' + parentHandle;
+            document.getElementById('reply-preview-text').innerText = parentContent;
+            document.getElementById('reply-preview-container').style.display = 'block';
+
+            togglePostSheet(true);
+        }
+
+        // 5. プロフィール編集モーダルの開閉
+        function toggleProfileEditModal(isOpen) {
+            const sheet = document.getElementById('profile-edit-sheet');
+            const overlay = document.getElementById('profile-edit-overlay');
+            if (isOpen) {
+                sheet.classList.add('open');
+                overlay.classList.add('open');
+                
+                document.getElementById('edit-display-name').value = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
+                document.getElementById('edit-handle').value = localStorage.getItem('sasuty_handle') || 'guest';
+                document.getElementById('edit-bio').value = localStorage.getItem('sasuty_bio') || '';
+                document.getElementById('edit-location').value = localStorage.getItem('sasuty_location') || '';
+                document.getElementById('edit-website').value = localStorage.getItem('sasuty_website') || '';
+                document.getElementById('edit-birth').value = localStorage.getItem('sasuty_birth') || '';
+                document.getElementById('edit-banner-color').value = localStorage.getItem('sasuty_banner_color') || '#1d9bf0';
+            } else {
+                sheet.classList.remove('open');
+                overlay.classList.remove('open');
+            }
+        }
+
+        function openProfileEditModal() {
+            toggleProfileEditModal(true);
+        }
+
+        // 6. 編集内容をローカルストレージに保存
+        function saveDetailedProfile() {
+            localStorage.setItem('sasuty_display_name', document.getElementById('edit-display-name').value.trim());
+            localStorage.setItem('sasuty_handle', document.getElementById('edit-handle').value.trim());
+            localStorage.setItem('sasuty_bio', document.getElementById('edit-bio').value.trim());
+            localStorage.setItem('sasuty_location', document.getElementById('edit-location').value.trim());
+            localStorage.setItem('sasuty_website', document.getElementById('edit-website').value.trim());
+            localStorage.setItem('sasuty_birth', document.getElementById('edit-birth').value.trim());
+            localStorage.setItem('sasuty_banner_color', document.getElementById('edit-banner-color').value.trim() || '#1d9bf0');
+
+            loadSavedProfile();
+            toggleProfileEditModal(false);
+
+            // 表示更新
+            if (globalPostsCache.length > 0) {
+                renderPosts(globalPostsCache);
+            }
+        }
+
+        // 7. ビューポートのタブ切り替え
+        function switchTab(viewId, menuId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(viewId).classList.add('active');
+            document.getElementById(menuId).classList.add('active');
+
+            const titleText = menuId === 'menu-timeline' ? 'ホーム' : 'プロフィール';
+            document.getElementById('page-title-text').innerText = titleText;
+
+            toggleSidebar(false);
+        }
+
+        // 8. データベースから全投稿を取得 (リアクションリレーション集計を統合)
+        async function fetchPosts() {
+            if (!supabaseClient) return;
+
+            // 1. メイン投稿と返信を全取得
+            const { data: postsData, error: postsError } = await supabaseClient
+                .from('posts')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (postsError) {
+                console.error("データのフェッチに失敗しました:", postsError);
+                return;
+            }
+
+            // 2. いいね、リポスト、インプレッションを同時に取得
+            const { data: likesData } = await supabaseClient.from('likes').select('post_id, user_handle');
+            const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle');
+            const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count');
+
+            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+
+            // 3. データマージ処理
+            globalPostsCache = postsData.map(post => {
+                const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
+                const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
+                const postImpression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
+
+                // 閲覧数の擬似増分（ページリロードや取得ごとに確実に＋1追加する。本物のインプレッション挙動）
+                trackImpression(post.id, postImpression ? postImpression.views_count : 0);
+
+                return {
+                    ...post,
+                    likes_count: postLikes.length,
+                    liked_by_me: postLikes.some(l => l.user_handle === myHandle),
+                    reposts_count: postReposts.length,
+                    reposted_by_me: postReposts.some(r => r.user_handle === myHandle),
+                    views: postImpression ? postImpression.views_count + 1 : 1
+                };
+            });
+
+            renderPosts(globalPostsCache);
+        }
+
+        // インプレッションカウント増幅処理
+        async function trackImpression(postId, currentCount) {
+            if (!supabaseClient) return;
+            await supabaseClient.from('impressions').upsert(
+                { post_id: postId, views_count: currentCount + 1 },
+                { onConflict: 'post_id' }
+            );
+        }
+
+        // 9. スレッド形式タイムラインレンダラー
+        function renderPosts(posts) {
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = '';
+
+            const rootPosts = posts.filter(p => !p.parent_id);
+            const replies = posts.filter(p => p.parent_id);
+
+            rootPosts.forEach(root => {
+                const groupContainer = document.createElement('div');
+                groupContainer.className = 'post-group';
+
+                const childReplies = replies
+                    .filter(r => r.parent_id === root.id)
+                    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+                const hasReplies = childReplies.length > 0;
+
+                // ルート親カード生成
+                const parentCard = createPostCardDOM(root, null, hasReplies);
+                groupContainer.appendChild(parentCard);
+
+                // スレッドアコーディオン構造の生成
+                if (hasReplies) {
+                    const repliesWrapper = document.createElement('div');
+                    repliesWrapper.className = 'replies-wrapper';
+                    repliesWrapper.id = `replies-wrapper-${root.id}`;
+
+                    childReplies.forEach((reply, idx) => {
+                        const isLastReply = (idx === childReplies.length - 1);
+                        repliesWrapper.appendChild(createPostCardDOM(reply, root.handle, !isLastReply));
+                    });
+
+                    groupContainer.appendChild(repliesWrapper);
+
+                    // 開閉バー配置
+                    const toggleBar = document.createElement('div');
+                    toggleBar.className = 'thread-toggle-bar';
+                    toggleBar.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleThreadCollapse(root.id);
+                    };
+
+                    toggleBar.innerHTML = `
+                        <button class="thread-toggle-button" id="thread-btn-${root.id}">
+                            <span class="thread-toggle-icon">▼</span>
+                            <span class="thread-toggle-text">スレッドを折りたたむ</span>
+                        </button>
+                    `;
+                    groupContainer.appendChild(toggleBar);
+                }
+
+                timeline.appendChild(groupContainer);
+            });
+        }
+
+        function toggleThreadCollapse(parentId) {
+            const wrapper = document.getElementById(`replies-wrapper-${parentId}`);
+            const btn = document.getElementById(`thread-btn-${parentId}`);
+            if (!wrapper || !btn) return;
+
+            const isCollapsed = wrapper.classList.toggle('collapsed');
+            const icon = btn.querySelector('.thread-toggle-icon');
+            const text = btn.querySelector('.thread-toggle-text');
+
+            if (isCollapsed) {
+                icon.style.transform = 'rotate(-90deg)';
+                text.innerText = 'スレッドを表示する';
+                btn.classList.add('collapsed');
+            } else {
+                icon.style.transform = 'rotate(0deg)';
+                text.innerText = 'スレッドを折りたたむ';
+                btn.classList.remove('collapsed');
+            }
+        }
+
+        // 10. 投稿を作成・インサート
+        async function createPost() {
+            const displayName = localStorage.getItem('sasuty_display_name') || 'ゲストユーザー';
+            const handle = localStorage.getItem('sasuty_handle') || 'guest';
+            const content = document.getElementById('post-content').value.trim();
+            const parentId = document.getElementById('post-parent-id').value || null;
+
+            if (!content || !supabaseClient) return;
+
+            const { error } = await supabaseClient
+                .from('posts')
+                .insert([{ 
+                    display_name: displayName, 
+                    handle: handle, 
+                    content: content, 
+                    parent_id: parentId 
+                }]);
+
+            if (error) {
+                alert('投稿に失敗しました: ' + error.message);
+            } else {
+                togglePostSheet(false);
+            }
+        }
+
+        // 11. いいねDB書き込みトグル
+        async function toggleLike(postId) {
+            if (!supabaseClient) return;
+            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+            
+            const post = globalPostsCache.find(p => p.id === postId);
+            if (!post) return;
+
+            if (post.liked_by_me) {
+                // いいね削除
+                await supabaseClient
+                    .from('likes')
+                    .delete()
+                    .match({ post_id: postId, user_handle: myHandle });
+            } else {
+                // いいね追加
+                await supabaseClient
+                    .from('likes')
+                    .insert([{ post_id: postId, user_handle: myHandle }]);
+            }
+            // 内部更新フェッチ
+            fetchPosts();
+        }
+
+        // 12. リポストDB書き込みトグル
+        async function toggleRepost(postId) {
+            if (!supabaseClient) return;
+            const myHandle = localStorage.getItem('sasuty_handle') || 'guest';
+
+            const post = globalPostsCache.find(p => p.id === postId);
+            if (!post) return;
+
+            if (post.reposted_by_me) {
+                // リポスト削除
+                await supabaseClient
+                    .from('reposts')
+                    .delete()
+                    .match({ post_id: postId, user_handle: myHandle });
+            } else {
+                // リポスト追加
+                await supabaseClient
+                    .from('reposts')
+                    .insert([{ post_id: postId, user_handle: myHandle }]);
+            }
+            // 内部更新フェッチ
+            fetchPosts();
+        }
+
+        // 13. DOM要素生成器
+        function createPostCardDOM(post, replyToHandle = null, showConnector = false) {
+            const postCard = document.createElement('div');
+            postCard.className = 'post-card';
+            if (showConnector) {
+                postCard.classList.add('has-connector');
+            }
+            postCard.dataset.id = post.id;
+
+            const initials = post.display_name ? post.display_name.charAt(0) : 'ゲ';
+            const timeDiff = getRelativeTime(post.created_at);
+
+            const replyBadgeHTML = replyToHandle 
+                ? `<div class="replying-to">返信先: <span>@${escapeHTML(replyToHandle)}</span></div>` 
+                : '';
+
+            postCard.innerHTML = `
+                <div class="avatar-col">
+                    <div class="avatar">${escapeHTML(initials)}</div>
+                </div>
+                <div class="content-col">
+                    <div class="post-meta">
+                        <span class="author-name">${escapeHTML(post.display_name)}</span>
+                        <span class="author-handle">@${escapeHTML(post.handle)}</span>
+                        <span class="post-dot">·</span>
+                        <span class="post-time" title="${new Date(post.created_at).toLocaleString()}">${timeDiff}</span>
+                    </div>
+                    ${replyBadgeHTML}
+                    <div class="post-text">${escapeHTML(post.content)}</div>
+                    <div class="post-actions" onclick="event.stopPropagation()">
+                        <!-- 返信 -->
+                        <button class="action-btn reply-btn" onclick="openReplyModal('${post.id}', '${escapeHTML(post.display_name)}', '${escapeHTML(post.handle)}', '${escapeHTML(post.content.substring(0, 50))}')">
+                            <svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.246c4.42 0 8.005 3.58 8.005 8 0 4.42-3.585 8-8.005 8h-2.115l-5.117 5.12c-.614.61-1.647.17-1.647-.69v-4.43c-3.349-.41-5.377-3.13-5.377-6.002z"/></svg>
+                            <span>${replyToHandle ? '' : '1'}</span>
+                        </button>
+                        <!-- リポスト -->
+                        <button class="action-btn repost-btn ${post.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${post.id}')">
+                            <svg viewBox="0 0 24 24"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L4.5 6.55V17c0 1.1.898 2 2 2h4v2H6.5c-2.209 0-4-1.79-4-4V6.55L.932 8.48-.432 7.02 4.5 3.88zM17.5 20.12l-4.432-4.14 1.364-1.46 3.068 2.87V7c0-1.1-.898-2-2-2h-4V3h4.5c2.209 0 4 1.79 4 4v10.45l1.568-1.47 1.364 1.46-4.932 3.14z"/></svg>
+                            <span class="repost-count">${post.reposts_count}</span>
+                        </button>
+                        <!-- いいね -->
+                        <button class="action-btn like-btn ${post.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${post.id}')">
+                            <svg viewBox="0 0 24 24"><path d="M16.697 5.5c-1.222-.06-2.679.69-3.89 2.06L12 8.52l-.807-.96C9.982 6.19 8.525 5.44 7.303 5.5 5.202 5.58 3.5 7.3 3.5 9.42c0 1.15.3 2.23.85 3.18.91 1.58 4.42 5.09 7.65 8.24l.15.15.15-.15c3.23-3.15 6.74-6.66 7.65-8.24.55-.95.85-2.03.85-3.18 0-2.12-1.702-3.84-3.803-3.92z"/></svg>
+                            <span class="like-count">${post.likes_count}</span>
+                        </button>
+                        <!-- インプレッション -->
+                        <button class="action-btn">
+                            <svg viewBox="0 0 24 24"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21v-4h2v4H4zM13 21v-8h2v8h-2z"/></svg>
+                            <span>${post.views}</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            return postCard;
+        }
+
+        // 14. リアルタイム受信購読
+        function subscribeToDatabase() {
+            if (!supabaseClient) return;
+
+            // 投稿、いいね、リポスト、インプレッションが更新されたらすべて再配置同期
+            supabaseClient
+                .channel('sasuty-realtime-channel')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => fetchPosts())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'reposts' }, () => fetchPosts())
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'impressions' }, () => fetchPosts())
+                .subscribe();
+        }
+
+        // 15. 相対時間フォーマッタ
+        function getRelativeTime(dateTimeStr) {
+            const now = new Date();
+            const past = new Date(dateTimeStr);
+            const msPerMinute = 60 * 1000;
+            const msPerHour = msPerMinute * 60;
+            const msPerDay = msPerHour * 24;
+            const elapsed = now - past;
+
+            if (elapsed < msPerMinute) {
+                return Math.max(1, Math.round(elapsed/1000)) + '秒';
+            } else if (elapsed < msPerHour) {
+                return Math.round(elapsed/msPerMinute) + '分';
+            } else if (elapsed < msPerDay) {
+                return Math.round(elapsed/msPerHour) + '時間';
+            } else {
+                return past.toLocaleDateString([], {month: '2-digit', day: '2-digit'});
+            }
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+        }
+
+        init();
+    </script>
+</body>
+</html>
