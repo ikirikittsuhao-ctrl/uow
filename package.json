@@ -1,16 +1,15 @@
 {
-  "name": "sasuty-app",
+  "name": "sasuty",
   "version": "1.0.0",
-  "description": "sasuty SNS web application with Supabase integration",
-  "main": "server.js",
+  "description": "sasuty - シンプルなSNSアプリ (Supabase連携)",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.6",
     "express": "^4.19.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "private": true
+  }
 }
