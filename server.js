@@ -11,11 +11,13 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ================ Supabase 設定 ================
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zcwvrtkleplyhujovxxp.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpjd3ZydGtsZXBseWh1am92eHhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyODgxOTMsImV4cCI6MjA5OTg2NDE5M30.qcL9zHr757Yc_yqoIy1EsPbUa0gyYggukJ1Y-yEq-H4';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ================ 定数 ================
 const SESSION_COOKIE_NAME = 'sasuty_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{3,15}$/;
@@ -384,7 +386,6 @@ app.post('/api/posts', requireAuth, postLimiter, async (req, res) => {
 
 // ================ インプレッション（閲覧数） ================
 
-// インプレッション登録：1ユーザー1投稿につき1回だけカウント
 app.post('/api/posts/:id/view', viewLimiter, async (req, res) => {
     try {
         const { id } = req.params;
@@ -400,15 +401,10 @@ app.post('/api/posts/:id/view', viewLimiter, async (req, res) => {
             return res.status(400).json({ error: 'Request expired' });
         }
 
-        // クライアント IP を記録して、同じ投稿の同じ IP からの複数ビューを防ぐ
+        // クライアント IP を記録
         const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
-
-        // ユーザーエージェント
         const userAgent = req.get('user-agent') || 'unknown';
 
-        // 同じ投稿に対するこのセッション/IP からの最近のビューをチェック
-        // （実装はSupabaseのRPCで処理することをお勧め）
-        
         // Supabase RPC: increment_impression
         const { data, error } = await supabase.rpc('increment_impression', { 
             p_post_id: id,
@@ -556,6 +552,17 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'An unexpected error occurred' });
 });
 
-app.listen(PORT, () => {
+// サーバー起動
+const server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    console.log(`http://localhost:${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
 });
