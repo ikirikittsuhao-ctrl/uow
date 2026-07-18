@@ -249,6 +249,10 @@
             cursor: pointer;
         }
 
+        .post-card:hover {
+            background: var(--bg-hover);
+        }
+
         .post-group .post-card:not(:last-child) {
             border-bottom: none;
         }
@@ -550,6 +554,10 @@
             border-bottom: 1px dashed var(--border-light);
         }
 
+        .reply-preview.show {
+            display: flex;
+        }
+
         .reply-preview-inner {
             display: flex;
             gap: 12px;
@@ -616,7 +624,7 @@
             transition: background 0.2s;
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
             background: var(--primary-blue-hover);
         }
 
@@ -947,7 +955,7 @@
         <div class="profile-edit-form">
             <div class="input-field">
                 <label>名前</label>
-                <input type="text" id="edit-display-name" placeholder="表示名" maxlength="30">
+                <input type="text" id="edit-display-name" placeholder="表示名" maxlength="50">
             </div>
             <div class="input-field">
                 <label>自己紹介</label>
@@ -966,7 +974,7 @@
                 <input type="text" id="edit-birth" placeholder="2000年1月1日 など" maxlength="30">
             </div>
             <div class="input-field">
-                <label>テーマカラー (16進数または色名)</label>
+                <label>テーマカラー (16進数)</label>
                 <input type="text" id="edit-banner-color" placeholder="#1d9bf0" maxlength="30">
             </div>
             <div class="post-form-footer" style="border-top:none; padding-top:0;">
@@ -977,13 +985,14 @@
 
     <script src="/common.js"></script>
     <script>
+        const MAX_POST_LENGTH = 280;
         let supabaseClient;
         let globalPostsCache = [];
 
         // 1. 初期化処理
         async function init() {
             const loggedIn = await requireLoginOrRedirect();
-            if (!loggedIn) return; // ログインページへリダイレクト済み
+            if (!loggedIn) return;
 
             bindProfileToDOM(currentUser);
 
@@ -991,24 +1000,23 @@
                 const res = await fetch('/api/config');
                 const config = await res.json();
                 
-                // Supabase クライアント初期化
                 supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
 
-                // 初期データ読み込み＆同期購読
                 await fetchPosts();
                 subscribeToDatabase();
             } catch (e) {
-                console.error("Supabase初期化に失敗しました。認証情報または接続を確認してください。", e);
+                console.error("Supabase初期化に失敗しました:", e);
+                alert('データベース接続に失敗しました');
             }
 
             document.getElementById('post-content').addEventListener('input', updateModalCharCounter);
         }
 
-        // 2. サーバーから取得したプロフィールをDOMに反映
+        // 2. プロフィール情報をDOMにバインド
         function bindProfileToDOM(user) {
             const displayName = user.display_name || 'ユーザー';
             const handle = user.handle || 'guest';
-            const bio = user.bio || 'こんにちは！sasutyへようこそ。';
+            const bio = user.bio || 'こんにちは！';
             const location = user.location || '未設定';
             const website = user.website || '';
             const birth = user.birth || '未設定';
@@ -1026,13 +1034,13 @@
             document.getElementById('profile-card-birth').innerText = birth;
             document.getElementById('profile-banner').style.backgroundColor = bannerColor;
 
-            const firstChar = displayName.charAt(0);
+            const firstChar = displayName.charAt(0).toUpperCase();
             document.getElementById('sidebar-avatar').innerText = firstChar;
             document.getElementById('profile-card-avatar').innerText = firstChar;
             document.getElementById('modal-current-avatar').innerText = firstChar;
         }
 
-        // 3. サイドバーの開閉制御
+        // 3. サイドバー開閉
         function toggleSidebar(forceOpen) {
             const sidebar = document.getElementById('sidebar');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -1047,7 +1055,7 @@
             }
         }
 
-        // 4. 投稿シートモーダルの開閉
+        // 4. 投稿モーダル開閉
         function togglePostSheet(isOpen) {
             const sheet = document.getElementById('bottom-form-sheet');
             const overlay = document.getElementById('form-overlay');
@@ -1060,7 +1068,7 @@
                 overlay.classList.remove('open');
                 document.getElementById('post-content').value = '';
                 document.getElementById('post-parent-id').value = '';
-                document.getElementById('reply-preview-container').style.display = 'none';
+                document.getElementById('reply-preview-container').classList.remove('show');
                 updateModalCharCounter();
             }
         }
@@ -1068,6 +1076,7 @@
         function openNewPostModal() {
             document.getElementById('modal-type-title').innerText = '新規投稿';
             document.getElementById('post-content').placeholder = 'いまどうしてる？';
+            document.getElementById('post-parent-id').value = '';
             togglePostSheet(true);
         }
 
@@ -1076,17 +1085,16 @@
             document.getElementById('post-content').placeholder = '返信をポスト...';
             document.getElementById('post-parent-id').value = parentPostId;
 
-            // 親スレッドプレビュー
-            document.getElementById('reply-preview-avatar').innerText = parentName.charAt(0);
+            document.getElementById('reply-preview-avatar').innerText = parentName.charAt(0).toUpperCase();
             document.getElementById('reply-preview-name').innerText = parentName;
             document.getElementById('reply-preview-handle').innerText = '@' + parentHandle;
             document.getElementById('reply-preview-text').innerText = parentContent;
-            document.getElementById('reply-preview-container').style.display = 'block';
+            document.getElementById('reply-preview-container').classList.add('show');
 
             togglePostSheet(true);
         }
 
-        // 4.5 文字数カウンター（投稿モーダル）
+        // 5. 文字カウンター
         function updateModalCharCounter() {
             const textarea = document.getElementById('post-content');
             const counter = document.getElementById('modal-char-counter');
@@ -1097,13 +1105,16 @@
             counter.classList.remove('warn', 'over');
             if (len > MAX_POST_LENGTH) {
                 counter.classList.add('over');
+                btn.disabled = true;
             } else if (len > MAX_POST_LENGTH * 0.9) {
                 counter.classList.add('warn');
+                btn.disabled = false;
+            } else {
+                btn.disabled = (len === 0);
             }
-            btn.disabled = (len === 0 || len > MAX_POST_LENGTH);
         }
 
-        // 5. プロフィール編集モーダルの開閉
+        // 6. プロフィール編集モーダル開閉
         function toggleProfileEditModal(isOpen) {
             const sheet = document.getElementById('profile-edit-sheet');
             const overlay = document.getElementById('profile-edit-overlay');
@@ -1127,7 +1138,7 @@
             toggleProfileEditModal(true);
         }
 
-        // 6. 編集内容をサーバーに保存（DB永続化）
+        // 7. プロフィール保存
         async function saveDetailedProfile() {
             const payload = {
                 display_name: document.getElementById('edit-display-name').value.trim() || currentUser.handle,
@@ -1142,7 +1153,8 @@
                 const res = await fetch('/api/profile', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    credentials: 'include'
                 });
                 const data = await res.json();
 
@@ -1155,16 +1167,16 @@
                 bindProfileToDOM(currentUser);
                 toggleProfileEditModal(false);
 
-                // 表示更新
                 if (globalPostsCache.length > 0) {
                     renderPosts(globalPostsCache);
                 }
             } catch (e) {
+                console.error('Profile save error:', e);
                 alert('通信エラーが発生しました');
             }
         }
 
-        // 7. ビューポートのタブ切り替え
+        // 8. タブ切り替え
         function switchTab(viewId, menuId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
@@ -1178,49 +1190,49 @@
             toggleSidebar(false);
         }
 
-        // 8. データベースから全投稿を取得 (リアクションリレーション集計を統合)
+        // 9. 投稿データ取得
         async function fetchPosts() {
             if (!supabaseClient) return;
 
-            // 1. メイン投稿と返信を全取得
-            const { data: postsData, error: postsError } = await supabaseClient
-                .from('posts')
-                .select('*')
-                .order('created_at', { ascending: false });
+            try {
+                const { data: postsData, error: postsError } = await supabaseClient
+                    .from('posts')
+                    .select('*')
+                    .order('created_at', { ascending: false });
 
-            if (postsError) {
-                console.error("データのフェッチに失敗しました:", postsError);
-                return;
+                if (postsError) {
+                    console.error("Posts fetch error:", postsError);
+                    return;
+                }
+
+                const { data: likesData } = await supabaseClient.from('likes').select('post_id, user_handle');
+                const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle');
+                const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count');
+
+                const myHandle = currentUser ? currentUser.handle : null;
+
+                globalPostsCache = postsData.map(post => {
+                    const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
+                    const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
+                    const postImpression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
+
+                    return {
+                        ...post,
+                        likes_count: postLikes.length,
+                        liked_by_me: myHandle ? postLikes.some(l => l.user_handle === myHandle) : false,
+                        reposts_count: postReposts.length,
+                        reposted_by_me: myHandle ? postReposts.some(r => r.user_handle === myHandle) : false,
+                        views: postImpression ? postImpression.views_count : 0
+                    };
+                });
+
+                renderPosts(globalPostsCache);
+            } catch (e) {
+                console.error('Data fetch error:', e);
             }
-
-            // 2. いいね、リポスト、インプレッションを同時に取得
-            const { data: likesData } = await supabaseClient.from('likes').select('post_id, user_handle');
-            const { data: repostsData } = await supabaseClient.from('reposts').select('post_id, user_handle');
-            const { data: impressionsData } = await supabaseClient.from('impressions').select('post_id, views_count');
-
-            const myHandle = currentUser ? currentUser.handle : null;
-
-            // 3. データマージ処理（インプレッションはタイムライン一覧では加算しない。
-            //    加算は個別ポストページ(onepost.html)を開いた時にサーバーのRPC経由で1回だけ行う）
-            globalPostsCache = postsData.map(post => {
-                const postLikes = likesData ? likesData.filter(l => l.post_id === post.id) : [];
-                const postReposts = repostsData ? repostsData.filter(r => r.post_id === post.id) : [];
-                const postImpression = impressionsData ? impressionsData.find(i => i.post_id === post.id) : null;
-
-                return {
-                    ...post,
-                    likes_count: postLikes.length,
-                    liked_by_me: myHandle ? postLikes.some(l => l.user_handle === myHandle) : false,
-                    reposts_count: postReposts.length,
-                    reposted_by_me: myHandle ? postReposts.some(r => r.user_handle === myHandle) : false,
-                    views: postImpression ? postImpression.views_count : 0
-                };
-            });
-
-            renderPosts(globalPostsCache);
         }
 
-        // 9. スレッド形式タイムラインレンダラー
+        // 10. 投稿レンダリング
         function renderPosts(posts) {
             const timeline = document.getElementById('timeline');
             timeline.innerHTML = '';
@@ -1243,11 +1255,9 @@
 
                 const hasReplies = childReplies.length > 0;
 
-                // ルート親カード生成
                 const parentCard = createPostCardDOM(root, null, hasReplies, childReplies.length);
                 groupContainer.appendChild(parentCard);
 
-                // スレッドアコーディオン構造の生成
                 if (hasReplies) {
                     const repliesWrapper = document.createElement('div');
                     repliesWrapper.className = 'replies-wrapper';
@@ -1260,7 +1270,6 @@
 
                     groupContainer.appendChild(repliesWrapper);
 
-                    // 開閉バー配置
                     const toggleBar = document.createElement('div');
                     toggleBar.className = 'thread-toggle-bar';
                     toggleBar.onclick = (e) => {
@@ -1286,22 +1295,18 @@
             const btn = document.getElementById(`thread-btn-${parentId}`);
             if (!wrapper || !btn) return;
 
-            const isCollapsed = wrapper.classList.toggle('collapsed');
+            wrapper.classList.toggle('collapsed');
             const icon = btn.querySelector('.thread-toggle-icon');
             const text = btn.querySelector('.thread-toggle-text');
 
-            if (isCollapsed) {
-                icon.style.transform = 'rotate(-90deg)';
+            if (wrapper.classList.contains('collapsed')) {
                 text.innerText = 'スレッドを表示する';
-                btn.classList.add('collapsed');
             } else {
-                icon.style.transform = 'rotate(0deg)';
                 text.innerText = 'スレッドを折りたたむ';
-                btn.classList.remove('collapsed');
             }
         }
 
-        // 10. 投稿を作成・インサート（サーバーAPI経由・文字数制限あり）
+        // 11. 投稿作成
         async function createPost() {
             const content = document.getElementById('post-content').value.trim();
             const parentId = document.getElementById('post-parent-id').value || null;
@@ -1320,7 +1325,8 @@
                 const res = await fetch('/api/posts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, parent_id: parentId })
+                    body: JSON.stringify({ content, parent_id: parentId }),
+                    credentials: 'include'
                 });
                 const data = await res.json();
 
@@ -1336,13 +1342,14 @@
                 togglePostSheet(false);
                 await fetchPosts();
             } catch (e) {
+                console.error('Post create error:', e);
                 alert('通信エラーが発生しました');
                 btn.disabled = false;
                 btn.innerText = '投稿する';
             }
         }
 
-        // 11. いいねDB書き込みトグル（unique制約で二重いいねを防止・エラーハンドリングあり）
+        // 12. いいね
         async function toggleLike(postId) {
             if (!supabaseClient || !currentUser) return;
             const myHandle = currentUser.handle;
@@ -1350,29 +1357,24 @@
             const post = globalPostsCache.find(p => p.id === postId);
             if (!post) return;
 
-            let opError = null;
-
-            if (post.liked_by_me) {
-                const { error } = await supabaseClient
-                    .from('likes')
-                    .delete()
-                    .match({ post_id: postId, user_handle: myHandle });
-                opError = error;
-            } else {
-                const { error } = await supabaseClient
-                    .from('likes')
-                    .insert([{ post_id: postId, user_handle: myHandle }]);
-                opError = error;
+            try {
+                if (post.liked_by_me) {
+                    await supabaseClient
+                        .from('likes')
+                        .delete()
+                        .match({ post_id: postId, user_handle: myHandle });
+                } else {
+                    await supabaseClient
+                        .from('likes')
+                        .insert([{ post_id: postId, user_handle: myHandle }]);
+                }
+                await fetchPosts();
+            } catch (e) {
+                console.error('Like error:', e);
             }
-
-            if (opError) {
-                console.error('いいね処理に失敗しました:', opError);
-            }
-            // 内部更新フェッチ
-            await fetchPosts();
         }
 
-        // 12. リポストDB書き込みトグル（unique制約で二重リポストを防止・エラーハンドリングあり）
+        // 13. リポスト
         async function toggleRepost(postId) {
             if (!supabaseClient || !currentUser) return;
             const myHandle = currentUser.handle;
@@ -1380,29 +1382,24 @@
             const post = globalPostsCache.find(p => p.id === postId);
             if (!post) return;
 
-            let opError = null;
-
-            if (post.reposted_by_me) {
-                const { error } = await supabaseClient
-                    .from('reposts')
-                    .delete()
-                    .match({ post_id: postId, user_handle: myHandle });
-                opError = error;
-            } else {
-                const { error } = await supabaseClient
-                    .from('reposts')
-                    .insert([{ post_id: postId, user_handle: myHandle }]);
-                opError = error;
+            try {
+                if (post.reposted_by_me) {
+                    await supabaseClient
+                        .from('reposts')
+                        .delete()
+                        .match({ post_id: postId, user_handle: myHandle });
+                } else {
+                    await supabaseClient
+                        .from('reposts')
+                        .insert([{ post_id: postId, user_handle: myHandle }]);
+                }
+                await fetchPosts();
+            } catch (e) {
+                console.error('Repost error:', e);
             }
-
-            if (opError) {
-                console.error('リポスト処理に失敗しました:', opError);
-            }
-            // 内部更新フェッチ
-            await fetchPosts();
         }
 
-        // 13. DOM要素生成器（カードクリックでonepost.htmlへ遷移）
+        // 14. 投稿カード DOM 生成
         function createPostCardDOM(post, replyToHandle = null, showConnector = false, replyCount = 0) {
             const postCard = document.createElement('div');
             postCard.className = 'post-card';
@@ -1411,7 +1408,7 @@
             }
             postCard.dataset.id = post.id;
 
-            const initials = post.display_name ? post.display_name.charAt(0) : '?';
+            const initials = post.display_name ? post.display_name.charAt(0).toUpperCase() : '?';
             const timeDiff = getRelativeTime(post.created_at);
 
             const replyBadgeHTML = replyToHandle 
@@ -1432,23 +1429,19 @@
                     ${replyBadgeHTML}
                     <div class="post-text">${escapeHTML(post.content)}</div>
                     <div class="post-actions" onclick="event.stopPropagation()">
-                        <!-- 返信 -->
                         <button class="action-btn reply-btn" onclick="openReplyModal('${post.id}', '${escapeHTML(post.display_name)}', '${escapeHTML(post.handle)}', '${escapeHTML(post.content.substring(0, 50))}')">
                             <svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.246c4.42 0 8.005 3.58 8.005 8 0 4.42-3.585 8-8.005 8h-2.115l-5.117 5.12c-.614.61-1.647.17-1.647-.69v-4.43c-3.349-.41-5.377-3.13-5.377-6.002z"/></svg>
                             <span>${replyToHandle ? '' : replyCount}</span>
                         </button>
-                        <!-- リポスト -->
-                        <button class="action-btn repost-btn ${post.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${post.id}')">
+                        <button class="action-btn repost-btn ${post.reposted_by_me ? 'active' : ''}" onclick="toggleRepost('${post.id}'); event.stopPropagation();">
                             <svg viewBox="0 0 24 24"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L4.5 6.55V17c0 1.1.898 2 2 2h4v2H6.5c-2.209 0-4-1.79-4-4V6.55L.932 8.48-.432 7.02 4.5 3.88zM17.5 20.12l-4.432-4.14 1.364-1.46 3.068 2.87V7c0-1.1-.898-2-2-2h-4V3h4.5c2.209 0 4 1.79 4 4v10.45l1.568-1.47 1.364 1.46-4.932 3.14z"/></svg>
                             <span class="repost-count">${post.reposts_count}</span>
                         </button>
-                        <!-- いいね -->
-                        <button class="action-btn like-btn ${post.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${post.id}')">
+                        <button class="action-btn like-btn ${post.liked_by_me ? 'liked' : ''}" onclick="toggleLike('${post.id}'); event.stopPropagation();">
                             <svg viewBox="0 0 24 24"><path d="M16.697 5.5c-1.222-.06-2.679.69-3.89 2.06L12 8.52l-.807-.96C9.982 6.19 8.525 5.44 7.303 5.5 5.202 5.58 3.5 7.3 3.5 9.42c0 1.15.3 2.23.85 3.18.91 1.58 4.42 5.09 7.65 8.24l.15.15.15-.15c3.23-3.15 6.74-6.66 7.65-8.24.55-.95.85-2.03.85-3.18 0-2.12-1.702-3.84-3.803-3.92z"/></svg>
                             <span class="like-count">${post.likes_count}</span>
                         </button>
-                        <!-- インプレッション -->
-                        <button class="action-btn" style="cursor:default;" onclick="event.preventDefault()">
+                        <button class="action-btn" style="cursor:default;" onclick="event.stopPropagation(); event.preventDefault();">
                             <svg viewBox="0 0 24 24"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21v-4h2v4H4zM13 21v-8h2v8h-2z"/></svg>
                             <span>${post.views}</span>
                         </button>
@@ -1456,19 +1449,18 @@
                 </div>
             `;
 
-            // カード（アクションバー以外）をクリックすると個別ポストページへ遷移
-            postCard.addEventListener('click', () => {
+            postCard.addEventListener('click', (e) => {
+                if (e.target.closest('.post-actions')) return;
                 window.location.href = `/onepost.html?id=${post.id}`;
             });
 
             return postCard;
         }
 
-        // 14. リアルタイム受信購読
+        // 15. リアルタイム購読
         function subscribeToDatabase() {
             if (!supabaseClient) return;
 
-            // 投稿、いいね、リポスト、インプレッションが更新されたらすべて再配置同期
             supabaseClient
                 .channel('sasuty-realtime-channel')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts())
